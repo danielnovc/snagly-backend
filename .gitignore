@@ -24,6 +24,8 @@ go.work
 .env.local
 .env.production
 env.api
+aws/env.production
+aws/cloudformation-parameters.json
 
 # Logs
 logs/
