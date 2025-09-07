@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # Main Go application
+  distrack-backend:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - OCR_SERVICE_URL=http://tesseract-service:5000
+      - YOLO_SERVICE_URL=http://yolo-service:8000
+      - DATABASE_URL=${DATABASE_URL}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+    depends_on:
+      - tesseract-service
+      - yolo-service
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - distrack-network
+
+  # YOLO service for price detection
+  yolo-service:
+    build:
+      context: ../yolo-training
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_PATH=/app/models/price_detection_model.pt
+      - CONFIDENCE_THRESHOLD=0.5
+      - DEVICE=cpu
+    volumes:
+      - ../yolo-training/models:/app/models
+      - ../yolo-training/input:/app/input
+      - ../yolo-training/output:/app/output
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - distrack-network
+
+
+
+  # Tesseract OCR service for fast OCR
+  tesseract-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.ocr
+    ports:
+      - "5001:5000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - distrack-network
+
+
+
+networks:
+  distrack-network:
+    driver: bridge

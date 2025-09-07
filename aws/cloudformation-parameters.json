@@ -1,0 +1,26 @@
+[
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-00402b51d439d902a"
+  },
+  {
+    "ParameterKey": "SubnetIds",
+    "ParameterValue": "subnet-0fe915fde5e851677,subnet-00957be7a5098c1d6,subnet-0a46b1556cc5f0729"
+  },
+  {
+    "ParameterKey": "DatabaseUrl",
+    "ParameterValue": "postgresql://postgres.jpxgqdvanltzzhlcyqer:KMc4qvVDFaaenGQI@aws-1-eu-west-2.pooler.supabase.com:6543/postgres"
+  },
+  {
+    "ParameterKey": "SupabaseUrl",
+    "ParameterValue": "https://jpxgqdvanltzzhlcyqer.supabase.co"
+  },
+  {
+    "ParameterKey": "SupabaseAnonKey",
+    "ParameterValue": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpweGdxZHZhbmx0enpobGN5cWVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUzNDg4NzMsImV4cCI6MjA3MDkyNDg3M30.FoBVacO5VzNxMDuDx9L-LZBkhQ-Ekr5jfcQqlLsSHz8"
+  },
+  {
+    "ParameterKey": "AllowedOrigins",
+    "ParameterValue": "http://snagly-alb-191279591.eu-north-1.elb.amazonaws.com,https://snagly-alb-191279591.eu-north-1.elb.amazonaws.com,http://localhost:3000,http://localhost:8080,https://localhost:3000,https://localhost:8080"
+  }
+]
