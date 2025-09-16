@@ -42,7 +42,7 @@ func NewHandlers(urlRepo *repository.URLRepository, alertRepo *repository.AlertR
 	}
 
 	// Initialize task manager with 5 max workers
-	handlers.taskManager = scheduler.NewTaskManager(handlers.performPriceCheck, 5)
+	handlers.taskManager = scheduler.NewTaskManager(handlers.performSimplePriceCheck, handlers.performPriceCheck, 5)
 
 	return handlers
 }
@@ -77,8 +77,25 @@ func (h *Handlers) GetTaskManager() *scheduler.TaskManager {
 	return h.taskManager
 }
 
+// performSimplePriceCheck performs simple price checking (used by TaskManager)
+func (h *Handlers) performSimplePriceCheck(urlID int) (*models.PriceData, error) {
+	// Get URL details
+	url, err := h.urlRepo.GetURLByID(urlID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get URL: %v", err)
+	}
+
+	// Perform price check using hybrid scraper
+	priceData, err := h.scraper.ScrapePriceWithHybridMethod(url.URL, urlID)
+	if err != nil {
+		return nil, fmt.Errorf("price check failed: %v", err)
+	}
+
+	return priceData, nil
+}
+
 // performPriceCheck performs the actual price checking (used by TaskManager)
-func (h *Handlers) performPriceCheck(urlID int) (*models.PriceData, error) {
+func (h *Handlers) performPriceCheck(urlID int) (*models.PriceCheckResponse, error) {
 	// Get URL details
 	url, err := h.urlRepo.GetURLByID(urlID)
 	if err != nil {
@@ -94,8 +111,8 @@ func (h *Handlers) performPriceCheck(urlID int) (*models.PriceData, error) {
 		return nil, fmt.Errorf("price check failed recently. Next retry available at %s", nextRetryStr)
 	}
 	
-	// Perform the price check using the scraper
-	priceData, err := h.scraper.ScrapePriceWithHybridMethod(url.URL, urlID)
+	// Perform the price check using the dual results scraper
+	priceResponse, err := h.scraper.ScrapePriceWithDualResults(url.URL, urlID)
 	if err != nil {
 		// Mark as failed and schedule retry
 		if retryErr := h.urlRepo.MarkPriceCheckFailed(urlID); retryErr != nil {
@@ -107,6 +124,16 @@ func (h *Handlers) performPriceCheck(urlID int) (*models.PriceData, error) {
 	// Mark as successful
 	if retryErr := h.urlRepo.MarkPriceCheckSuccess(urlID); retryErr != nil {
 		log.Printf("❌ Failed to mark price check as successful: %v", retryErr)
+	}
+	
+	// Extract primary price data for database operations
+	var priceData *models.PriceData
+	if priceResponse.PrimaryPrice != nil {
+		priceData = priceResponse.PrimaryPrice
+	} else if priceResponse.AlternativePrice != nil {
+		priceData = priceResponse.AlternativePrice
+	} else {
+		return nil, fmt.Errorf("no price data found in response")
 	}
 	
 	// Update URL with new price
@@ -129,7 +156,7 @@ func (h *Handlers) performPriceCheck(urlID int) (*models.PriceData, error) {
 		log.Printf("🔔 %d alerts triggered for URL ID %d", len(triggeredAlerts), urlID)
 	}
 	
-	return priceData, nil
+	return priceResponse, nil
 }
 
 // HealthCheck returns a simple health check response
@@ -310,13 +337,14 @@ func (h *Handlers) CheckPriceNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Scrape price with hybrid scraper
+	// Scrape price with dual results method
 	if h.scraper == nil {
 		writeError(w, http.StatusInternalServerError, "Scraper not available")
 		return
 	}
 
-	priceData, err := h.scraper.ScrapePriceWithHybridMethod(url.URL, id)
+	// Use the new dual results method
+	priceResponse, err := h.scraper.ScrapePriceWithDualResults(url.URL, id)
 	if err != nil {
 		log.Printf("Failed to scrape price for %s: %v", url.Name, err)
 		
@@ -338,80 +366,172 @@ func (h *Handlers) CheckPriceNow(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Failed to mark price check as successful: %v", retryErr)
 	}
 
-	// Update URL with new price
-	oldPrice := url.GetCurrentPrice()
-	if err := h.urlRepo.UpdateURLPrice(id, priceData); err != nil {
-		log.Printf("Failed to update URL price: %v", err)
-		writeError(w, http.StatusInternalServerError, "Failed to update URL price")
+	// Update URL with primary price (if available)
+	if priceResponse.PrimaryPrice != nil {
+		oldPrice := url.GetCurrentPrice()
+		if err := h.urlRepo.UpdateURLPrice(id, priceResponse.PrimaryPrice); err != nil {
+			log.Printf("Failed to update URL price: %v", err)
+			writeError(w, http.StatusInternalServerError, "Failed to update URL price")
+			return
+		}
+
+		// Add to price history
+		if err := h.urlRepo.AddPriceHistory(id, priceResponse.PrimaryPrice); err != nil {
+			log.Printf("Failed to add price history: %v", err)
+		}
+
+		// Validate price change before updating and triggering alerts
+		priceChangeReason := url.GetPriceChangeReason(priceResponse.PrimaryPrice.CurrentPrice)
+		isRealistic := url.IsPriceChangeRealistic(priceResponse.PrimaryPrice.CurrentPrice)
+		
+		// Log price changes with validation
+		log.Printf("Price check for %s: $%.2f %s (method: %s, confidence: %.2f)", 
+			url.Name, priceResponse.PrimaryPrice.CurrentPrice, priceResponse.PrimaryPrice.Currency,
+			priceResponse.PrimaryPrice.ExtractionMethod, priceResponse.PrimaryPrice.Confidence)
+
+		if oldPrice > 0 && priceResponse.PrimaryPrice.CurrentPrice != oldPrice {
+			change := priceResponse.PrimaryPrice.CurrentPrice - oldPrice
+			changePercent := (change / oldPrice) * 100
+
+			if isRealistic {
+				if change < 0 {
+					log.Printf("📉 Price DROPPED: $%.2f → $%.2f (%.1f%%) - %s", oldPrice, priceResponse.PrimaryPrice.CurrentPrice, changePercent, priceChangeReason)
+				} else {
+					log.Printf("📈 Price INCREASED: $%.2f → $%.2f (+%.1f%%) - %s", oldPrice, priceResponse.PrimaryPrice.CurrentPrice, changePercent, priceChangeReason)
+				}
+			} else {
+				log.Printf("⚠️  UNREALISTIC PRICE CHANGE: $%.2f → $%.2f (%.1f%%) - %s", oldPrice, priceResponse.PrimaryPrice.CurrentPrice, changePercent, priceChangeReason)
+			}
+		}
+
+		if priceResponse.PrimaryPrice.DiscountPercentage > 0 {
+			log.Printf("💰 Discount: %.1f%% off", priceResponse.PrimaryPrice.DiscountPercentage)
+		}
+
+		// Only check for alerts if the price change is realistic
+		var triggeredAlerts []models.PriceAlert
+		if isRealistic {
+			triggeredAlerts, err = h.alertRepo.CheckAlerts(id, priceResponse.PrimaryPrice.CurrentPrice)
+			if err != nil {
+				log.Printf("Failed to check alerts: %v", err)
+			}
+			
+			// Log triggered alerts
+			if len(triggeredAlerts) > 0 {
+				log.Printf("🔔 %d alerts triggered for %s", len(triggeredAlerts), url.Name)
+				for _, alert := range triggeredAlerts {
+					log.Printf("  - Alert: %s (%.1f%%)", alert.AlertType, alert.Percentage)
+				}
+			}
+		} else {
+			log.Printf("🚫 Skipping alert checks due to unrealistic price change")
+		}
+	}
+	
+	// Return the dual response
+	writeJSON(w, http.StatusOK, priceResponse)
+}
+
+// CheckPriceNowDual performs price checking with dual results (always returns both YOLO+OCR and Network results)
+func (h *Handlers) CheckPriceNowDual(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid URL ID")
 		return
 	}
 
-	// Add to price history
-	if err := h.urlRepo.AddPriceHistory(id, priceData); err != nil {
-		log.Printf("Failed to add price history: %v", err)
-	}
-
-	// Validate price change before updating and triggering alerts
-	priceChangeReason := url.GetPriceChangeReason(priceData.CurrentPrice)
-	isRealistic := url.IsPriceChangeRealistic(priceData.CurrentPrice)
-	
-	// Log price changes with validation
-	log.Printf("Price check for %s: $%.2f %s (method: %s, confidence: %.2f)", 
-		url.Name, priceData.CurrentPrice, priceData.Currency,
-		priceData.ExtractionMethod, priceData.Confidence)
-
-	if oldPrice > 0 && priceData.CurrentPrice != oldPrice {
-		change := priceData.CurrentPrice - oldPrice
-		changePercent := (change / oldPrice) * 100
-
-		if isRealistic {
-			if change < 0 {
-				log.Printf("📉 Price DROPPED: $%.2f → $%.2f (%.1f%%) - %s", oldPrice, priceData.CurrentPrice, changePercent, priceChangeReason)
-			} else {
-				log.Printf("📈 Price INCREASED: $%.2f → $%.2f (+%.1f%%) - %s", oldPrice, priceData.CurrentPrice, changePercent, priceChangeReason)
-			}
-		} else {
-			log.Printf("⚠️  UNREALISTIC PRICE CHANGE: $%.2f → $%.2f (%.1f%%) - %s", oldPrice, priceData.CurrentPrice, changePercent, priceChangeReason)
+	// Get URL details
+	url, err := h.urlRepo.GetURLByID(id)
+	if err != nil {
+		if err.Error() == "URL not found" {
+			writeError(w, http.StatusNotFound, "URL not found")
+			return
 		}
+		log.Printf("Failed to get URL: %v", err)
+		writeError(w, http.StatusInternalServerError, "Failed to get URL")
+		return
 	}
 
-	if priceData.DiscountPercentage > 0 {
-		log.Printf("💰 Discount: %.1f%% off", priceData.DiscountPercentage)
+	// Check if URL can be retried now
+	if !url.CanRetry() {
+		nextRetryStr := "Unknown"
+		if url.NextRetryAt != nil {
+			nextRetryStr = url.NextRetryAt.Format("15:04")
+		}
+		writeError(w, http.StatusTooManyRequests, fmt.Sprintf("Price check failed recently. Next retry available at %s", nextRetryStr))
+		return
 	}
 
-	// Only check for alerts if the price change is realistic
-	var triggeredAlerts []models.PriceAlert
-	if isRealistic {
-		triggeredAlerts, err = h.alertRepo.CheckAlerts(id, priceData.CurrentPrice)
-		if err != nil {
-			log.Printf("Failed to check alerts: %v", err)
+	// Scrape price with dual results method
+	if h.scraper == nil {
+		writeError(w, http.StatusInternalServerError, "Scraper not available")
+		return
+	}
+
+	// Use the new dual results method
+	priceResponse, err := h.scraper.ScrapePriceWithDualResults(url.URL, id)
+	if err != nil {
+		log.Printf("Failed to scrape price for %s: %v", url.Name, err)
+		
+		// Mark as failed and schedule retry
+		if retryErr := h.urlRepo.MarkPriceCheckFailed(id); retryErr != nil {
+			log.Printf("Failed to mark price check as failed: %v", retryErr)
 		}
 		
-		// Log triggered alerts
-		if len(triggeredAlerts) > 0 {
-			log.Printf("🔔 %d alerts triggered for %s", len(triggeredAlerts), url.Name)
-			for _, alert := range triggeredAlerts {
-				log.Printf("  - Alert: %s (%.1f%%)", alert.AlertType, alert.Percentage)
-			}
-		}
-	} else {
-		log.Printf("🚫 Skipping alert checks due to unrealistic price change")
+		// Calculate next retry time
+		nextRetry := time.Now().Add(url.GetRetryDelay())
+		nextRetryStr := nextRetry.Format("15:04")
+		
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to scrape price. Will retry at %s (attempt %d/5)", nextRetryStr, url.RetryCount+1))
+		return
 	}
 
-	// Generate feedback ID for user confirmation
-	feedbackID := fmt.Sprintf("feedback_%d_%d", id, time.Now().Unix())
-	
-	// Create response with both prices for user feedback
-	response := models.PriceCheckResponse{
-		URLID:         id,
-		PrimaryPrice:  priceData,
-		NeedsFeedback: true,
-		FeedbackID:    feedbackID,
-		HasAlternative: false, // Will be set to true if user rejects primary
-		CheckedAt:     time.Now(),
+	// Mark as successful (reset retry count)
+	if retryErr := h.urlRepo.MarkPriceCheckSuccess(id); retryErr != nil {
+		log.Printf("Failed to mark price check as successful: %v", retryErr)
+	}
+
+	// Log the dual results
+	log.Printf("🔍 Dual price check for %s:", url.Name)
+	if priceResponse.YOLOOCRResult != nil {
+		log.Printf("  🎯 YOLO+OCR: $%.2f (confidence: %.2f)", 
+			priceResponse.YOLOOCRResult.CurrentPrice, priceResponse.YOLOOCRResult.Confidence)
+	}
+	if priceResponse.NetworkResult != nil {
+		log.Printf("  🌐 Network: $%.2f (confidence: %.2f)", 
+			priceResponse.NetworkResult.CurrentPrice, priceResponse.NetworkResult.Confidence)
+	}
+	log.Printf("  📊 Prices match: %t (confidence: %.2f)", priceResponse.PricesMatch, priceResponse.MatchConfidence)
+
+	// Update URL with primary price (if available) - but don't update if prices don't match
+	if priceResponse.PrimaryPrice != nil && priceResponse.PricesMatch {
+		oldPrice := url.GetCurrentPrice()
+		if err := h.urlRepo.UpdateURLPrice(id, priceResponse.PrimaryPrice); err != nil {
+			log.Printf("Failed to update URL price: %v", err)
+		} else {
+			// Add to price history
+			if err := h.urlRepo.AddPriceHistory(id, priceResponse.PrimaryPrice); err != nil {
+				log.Printf("Failed to add price history: %v", err)
+			}
+
+			// Log price changes
+			if oldPrice > 0 && priceResponse.PrimaryPrice.CurrentPrice != oldPrice {
+				change := priceResponse.PrimaryPrice.CurrentPrice - oldPrice
+				changePercent := (change / oldPrice) * 100
+				if change < 0 {
+					log.Printf("📉 Price DROPPED: $%.2f → $%.2f (%.1f%%)", oldPrice, priceResponse.PrimaryPrice.CurrentPrice, changePercent)
+				} else {
+					log.Printf("📈 Price INCREASED: $%.2f → $%.2f (+%.1f%%)", oldPrice, priceResponse.PrimaryPrice.CurrentPrice, changePercent)
+				}
+			}
+		}
+	} else if !priceResponse.PricesMatch {
+		log.Printf("⚠️ Prices don't match - not updating URL price until user confirms")
 	}
 	
-	writeJSON(w, http.StatusOK, response)
+	// Return the dual response
+	writeJSON(w, http.StatusOK, priceResponse)
 }
 
 // SetPriceAlert creates a new price alert

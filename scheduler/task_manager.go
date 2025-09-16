@@ -12,6 +12,9 @@ import (
 // PriceCheckFunc is a function type for checking prices
 type PriceCheckFunc func(urlID int) (*models.PriceData, error)
 
+// DualPriceCheckFunc is a function type for checking prices with dual response
+type DualPriceCheckFunc func(urlID int) (*models.PriceCheckResponse, error)
+
 // TaskManager manages async price checking tasks
 type TaskManager struct {
 	tasks           map[string]*models.PriceCheckTask
@@ -19,18 +22,20 @@ type TaskManager struct {
 	workers         int
 	maxWorkers      int
 	priceCheckFunc  PriceCheckFunc
+	dualCheckFunc   DualPriceCheckFunc
 	mutex           sync.RWMutex
 	stopChan        chan bool
 }
 
 // NewTaskManager creates a new task manager
-func NewTaskManager(priceCheckFunc PriceCheckFunc, maxWorkers int) *TaskManager {
+func NewTaskManager(priceCheckFunc PriceCheckFunc, dualCheckFunc DualPriceCheckFunc, maxWorkers int) *TaskManager {
 	tm := &TaskManager{
 		tasks:          make(map[string]*models.PriceCheckTask),
 		taskQueue:      make(chan *models.PriceCheckTask, 100), // Buffer for 100 tasks
 		workers:        0,
 		maxWorkers:     maxWorkers,
 		priceCheckFunc: priceCheckFunc,
+		dualCheckFunc:  dualCheckFunc,
 		stopChan:       make(chan bool),
 	}
 	
@@ -168,15 +173,21 @@ func (tm *TaskManager) worker(task *models.PriceCheckTask) {
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	// Perform the actual price check
-	result, err := tm.priceCheckFunc(task.URLID)
+	// Perform the actual price check (get dual response for frontend)
+	priceResponse, err := tm.dualCheckFunc(task.URLID)
 	if err != nil {
 		task.Fail("Price check failed: " + err.Error())
 		return
 	}
 	
-	// Complete the task
-	task.Complete(result)
+	// Validate that we have some price data
+	if priceResponse.PrimaryPrice == nil && priceResponse.AlternativePrice == nil {
+		task.Fail("No price data found in response")
+		return
+	}
+	
+	// Complete the task with dual response
+	task.CompleteWithDualResponse(priceResponse)
 	
 	log.Printf("✅ Task %s completed successfully in %v", task.ID, task.Duration())
 }

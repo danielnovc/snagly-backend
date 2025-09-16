@@ -1,0 +1,167 @@
+{
+    "family": "snagly-task",
+    "executionRoleArn": "arn:aws:iam::797926358985:role/snagly-task-execution-role",
+    "taskRoleArn": "arn:aws:iam::797926358985:role/snagly-task-role",
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "1024",
+    "memory": "2048",
+    "containerDefinitions": [
+        {
+            "name": "yolo-service",
+            "image": "797926358985.dkr.ecr.eu-north-1.amazonaws.com/snagly-yolo:latest",
+            "cpu": 0,
+            "memory": 512,
+            "portMappings": [
+                {
+                    "containerPort": 8000,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "MODEL_PATH",
+                    "value": "/app/models/price_detection_model.pt"
+                },
+                {
+                    "name": "CONFIDENCE_THRESHOLD",
+                    "value": "0.5"
+                },
+                {
+                    "name": "DEVICE",
+                    "value": "cpu"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/snagly",
+                    "awslogs-region": "eu-north-1",
+                    "awslogs-stream-prefix": "yolo"
+                }
+            }
+        },
+        {
+            "name": "snagly-backend",
+            "image": "797926358985.dkr.ecr.eu-north-1.amazonaws.com/snagly-backend:latest",
+            "cpu": 0,
+            "memory": 1024,
+            "portMappings": [
+                {
+                    "containerPort": 8080,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "MAX_CONCURRENT_CHECKS",
+                    "value": "3"
+                },
+                {
+                    "name": "MAX_WORKERS",
+                    "value": "3"
+                },
+                {
+                    "name": "ECS_CLUSTER_NAME",
+                    "value": "snagly-cluster"
+                },
+                {
+                    "name": "AWS_REGION",
+                    "value": "eu-north-1"
+                },
+                {
+                    "name": "REQUEST_TIMEOUT",
+                    "value": "300"
+                },
+                {
+                    "name": "PORT",
+                    "value": "8080"
+                },
+                {
+                    "name": "ECS_SERVICE_NAME",
+                    "value": "snagly-service"
+                },
+                {
+                    "name": "HEALTH_CHECK_INTERVAL",
+                    "value": "30"
+                },
+                {
+                    "name": "HOST",
+                    "value": "0.0.0.0"
+                },
+                {
+                    "name": "YOLO_SERVICE_URL",
+                    "value": "http://localhost:8000"
+                },
+                {
+                    "name": "SUPABASE_URL",
+                    "value": "https://jpxgqdvanltzzhlcyqer.supabase.co"
+                },
+                {
+                    "name": "ALLOWED_ORIGINS",
+                    "value": "*"
+                },
+                {
+                    "name": "LOG_FORMAT",
+                    "value": "json"
+                },
+                {
+                    "name": "PRICE_CHECK_INTERVAL",
+                    "value": "0 */12 * * *"
+                },
+                {
+                    "name": "SUPABASE_ANON_KEY",
+                    "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpweGdxZHZhbmx0enpobGN5cWVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUzNDg4NzMsImV4cCI6MjA3MDkyNDg3M30.FoBVacO5VzNxMDuDx9L-LZBkhQ-Ekr5jfcQqlLsSHz8"
+                },
+                {
+                    "name": "DATABASE_URL",
+                    "value": "postgresql://postgres.jpxgqdvanltzzhlcyqer:KMc4qvVDFaaenGQI@aws-1-eu-west-2.pooler.supabase.com:6543/postgres"
+                },
+                {
+                    "name": "OCR_SERVICE_URL",
+                    "value": "http://localhost:5000"
+                },
+                {
+                    "name": "LOG_LEVEL",
+                    "value": "info"
+                }
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/snagly",
+                    "awslogs-region": "eu-north-1",
+                    "awslogs-stream-prefix": "backend"
+                }
+            }
+        },
+        {
+            "name": "tesseract-service",
+            "image": "797926358985.dkr.ecr.eu-north-1.amazonaws.com/snagly-ocr:latest",
+            "cpu": 0,
+            "memory": 512,
+            "portMappings": [
+                {
+                    "containerPort": 5000,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/snagly",
+                    "awslogs-region": "eu-north-1",
+                    "awslogs-stream-prefix": "ocr"
+                }
+            }
+        }
+    ]
+}
+
+

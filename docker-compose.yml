@@ -27,7 +27,7 @@ services:
       context: ../yolo-training
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8002:8000"
     environment:
       - MODEL_PATH=/app/models/price_detection_model.pt
       - CONFIDENCE_THRESHOLD=0.5

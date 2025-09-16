@@ -136,7 +136,7 @@ Resources:
       TaskRoleArn: !Ref TaskRole
       ContainerDefinitions:
         - Name: snagly-backend
-          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/snagly-backend:latest"
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/snagly-backend:v1.0"
           PortMappings:
             - ContainerPort: 8080
               Protocol: tcp
@@ -193,7 +193,7 @@ Resources:
             Retries: 3
             StartPeriod: 60
         - Name: yolo-service
-          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/snagly-yolo:latest"
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/snagly-yolo:V1"
           PortMappings:
             - ContainerPort: 8000
               Protocol: tcp
@@ -220,7 +220,7 @@ Resources:
             Retries: 3
             StartPeriod: 60
         - Name: tesseract-service
-          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/snagly-ocr:latest"
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/snagly-ocr:V1"
           PortMappings:
             - ContainerPort: 5000
               Protocol: tcp

@@ -190,7 +190,7 @@ func (hps *HybridPriceScraper) extractAndMatchPrices(page *rod.Page, url string,
 		Reasons: []string{},
 	}
 
-	// Method 1: YOLO+OCR extraction - PRIORITY METHOD (Internal)
+	// Method 1: YOLO+OCR extraction - PRIORITY METHOD (Internal) with timeout
 	log.Printf("🎯 Attempting internal YOLO+OCR extraction for URL ID: %d...", urlID)
 	ocrStart := time.Now()
 	
@@ -199,14 +199,21 @@ func (hps *HybridPriceScraper) extractAndMatchPrices(page *rod.Page, url string,
 	var ocrDuration time.Duration
 	var ocrConfidence float64
 	
-	// Take a screenshot for OCR processing
-	screenshotPath, err := hps.takeScreenshot(page)
-	if err != nil {
-		log.Printf("❌ Failed to take screenshot: %v", err)
-		ocrPrice = 0
-		ocrErr = err
-		ocrDuration = time.Since(ocrStart)
-	} else {
+	// Use a channel to implement timeout for OCR extraction
+	ocrDone := make(chan struct{})
+	go func() {
+		defer close(ocrDone)
+		
+		// Take a screenshot for OCR processing
+		screenshotPath, err := hps.takeScreenshot(page)
+		if err != nil {
+			log.Printf("❌ Failed to take screenshot: %v", err)
+			ocrPrice = 0
+			ocrErr = err
+			ocrDuration = time.Since(ocrStart)
+			return
+		}
+		
 		// Use HTTP-based extractor for separate containers
 		httpResult, httpErr := hps.ocrExtractor.ExtractPriceWithYOLO(screenshotPath)
 		if httpErr == nil && httpResult != nil && httpResult.Success {
@@ -227,6 +234,17 @@ func (hps *HybridPriceScraper) extractAndMatchPrices(page *rod.Page, url string,
 		ocrDuration = time.Since(ocrStart)
 		// Clean up screenshot file
 		os.Remove(screenshotPath)
+	}()
+	
+	// Wait for OCR completion or timeout (30 seconds)
+	select {
+	case <-ocrDone:
+		// OCR completed
+	case <-time.After(30 * time.Second):
+		log.Printf("⏰ YOLO+OCR extraction timed out after 30 seconds")
+		ocrPrice = 0
+		ocrErr = fmt.Errorf("YOLO+OCR extraction timed out")
+		ocrDuration = time.Since(ocrStart)
 	}
 
 	if ocrErr == nil && ocrPrice > 0 {
@@ -244,11 +262,32 @@ func (hps *HybridPriceScraper) extractAndMatchPrices(page *rod.Page, url string,
 		log.Printf("❌ YOLO OCR extraction failed: %v (took %v)", ocrErr, ocrDuration)
 	}
 
-	// Method 2: Network extraction - FALLBACK METHOD
+	// Method 2: Network extraction - FALLBACK METHOD with timeout
 	log.Printf("🌐 Attempting network extraction - FALLBACK METHOD...")
 	networkStart := time.Now()
-	networkPriceData, networkErr := hps.priceScraper.ExtractFromNetworkRequests(page)
-	networkDuration := time.Since(networkStart)
+	
+	var networkPriceData *models.PriceData
+	var networkErr error
+	var networkDuration time.Duration
+	
+	// Use a channel to implement timeout for network extraction
+	networkDone := make(chan struct{})
+	go func() {
+		defer close(networkDone)
+		networkPriceData, networkErr = hps.priceScraper.ExtractFromNetworkRequests(page)
+		networkDuration = time.Since(networkStart)
+	}()
+	
+	// Wait for network extraction completion or timeout (20 seconds)
+	select {
+	case <-networkDone:
+		// Network extraction completed
+	case <-time.After(20 * time.Second):
+		log.Printf("⏰ Network extraction timed out after 20 seconds")
+		networkPriceData = nil
+		networkErr = fmt.Errorf("Network extraction timed out")
+		networkDuration = time.Since(networkStart)
+	}
 
 	if networkErr == nil && networkPriceData != nil && networkPriceData.CurrentPrice > 0 {
 		result.NetworkPrice = networkPriceData.CurrentPrice
@@ -728,4 +767,122 @@ func (hps *HybridPriceScraper) forceNetworkExtraction(page *rod.Page, urlID int)
 		ExtractionMethod: "network_alternative",
 		Confidence:       networkPriceData.Confidence,
 	}, nil
+}
+
+// ScrapePriceWithDualResults performs hybrid price scraping and returns both results when they differ
+func (hps *HybridPriceScraper) ScrapePriceWithDualResults(url string, urlID int) (*models.PriceCheckResponse, error) {
+	log.Printf("🔍 Starting dual price check for URL %d: %s", urlID, url)
+	
+	// Create a new browser page
+	page := hps.priceScraper.browser.MustPage()
+	defer page.MustClose()
+	
+	// Navigate to the URL
+	if err := page.Navigate(url); err != nil {
+		return nil, fmt.Errorf("failed to navigate to URL: %v", err)
+	}
+	
+	// Wait for page to load
+	page.MustWaitLoad()
+	time.Sleep(2 * time.Second)
+	
+	// Perform both extractions and compare results
+	matchResult := hps.extractAndMatchPrices(page, url, urlID)
+	
+	// Construct the response
+	response := &models.PriceCheckResponse{
+		URLID: urlID,
+	}
+	
+	// Set primary and alternative prices based on results
+	if matchResult.NetworkSuccess && matchResult.OCRSuccess {
+		// Both methods succeeded
+		if matchResult.PricesMatch {
+			// Prices match - return single result
+			response.PrimaryPrice = &models.PriceData{
+				CurrentPrice:     matchResult.FinalPrice,
+				OriginalPrice:    matchResult.FinalPrice,
+				Currency:         "USD",
+				Source:           matchResult.Method,
+				ExtractionMethod: matchResult.Method,
+				Confidence:       matchResult.MatchConfidence,
+			}
+			response.NeedsFeedback = false
+			response.HasAlternative = false
+		} else {
+			// Prices differ - return both results
+			response.PrimaryPrice = &models.PriceData{
+				CurrentPrice:     matchResult.NetworkPrice,
+				OriginalPrice:    matchResult.NetworkPrice,
+				Currency:         "USD",
+				Source:           "network",
+				ExtractionMethod: "network",
+				Confidence:       matchResult.NetworkConfidence,
+			}
+			response.AlternativePrice = &models.PriceData{
+				CurrentPrice:     matchResult.OCRPrice,
+				OriginalPrice:    matchResult.OCRPrice,
+				Currency:         "USD",
+				Source:           "yolo_ocr",
+				ExtractionMethod: "yolo_ocr",
+				Confidence:       matchResult.OCRConfidence,
+			}
+			response.NeedsFeedback = true
+			response.HasAlternative = true
+			response.FeedbackID = fmt.Sprintf("feedback_%d_%d", urlID, time.Now().Unix())
+		}
+	} else if matchResult.NetworkSuccess {
+		// Only network succeeded
+		response.PrimaryPrice = &models.PriceData{
+			CurrentPrice:     matchResult.NetworkPrice,
+			OriginalPrice:    matchResult.NetworkPrice,
+			Currency:         "USD",
+			Source:           "network",
+			ExtractionMethod: "network",
+			Confidence:       matchResult.NetworkConfidence,
+		}
+		response.NeedsFeedback = false
+		response.HasAlternative = false
+	} else if matchResult.OCRSuccess {
+		// Only OCR succeeded
+		response.PrimaryPrice = &models.PriceData{
+			CurrentPrice:     matchResult.OCRPrice,
+			OriginalPrice:    matchResult.OCRPrice,
+			Currency:         "USD",
+			Source:           "yolo_ocr",
+			ExtractionMethod: "yolo_ocr",
+			Confidence:       matchResult.OCRConfidence,
+		}
+		response.NeedsFeedback = false
+		response.HasAlternative = false
+	} else {
+		// Both methods failed
+		return nil, fmt.Errorf("both extraction methods failed: %s", matchResult.Error)
+	}
+	
+	// Set dual result information
+	response.YOLOOCRResult = &models.PriceData{
+		CurrentPrice:     matchResult.OCRPrice,
+		OriginalPrice:    matchResult.OCRPrice,
+		Currency:         "USD",
+		Source:           "yolo_ocr",
+		ExtractionMethod: "yolo_ocr",
+		Confidence:       matchResult.OCRConfidence,
+	}
+	response.NetworkResult = &models.PriceData{
+		CurrentPrice:     matchResult.NetworkPrice,
+		OriginalPrice:    matchResult.NetworkPrice,
+		Currency:         "USD",
+		Source:           "network",
+		ExtractionMethod: "network",
+		Confidence:       matchResult.NetworkConfidence,
+	}
+	response.PricesMatch = matchResult.PricesMatch
+	response.MatchConfidence = matchResult.MatchConfidence
+	response.Reasons = matchResult.Reasons
+	
+	log.Printf("✅ Dual price check completed for URL %d - Match: %v, Confidence: %.2f", 
+		urlID, matchResult.PricesMatch, matchResult.MatchConfidence)
+	
+	return response, nil
 }

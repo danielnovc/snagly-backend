@@ -321,4 +321,38 @@ type ScrapingPreference struct {
 	LastUsed    time.Time `json:"last_used" db:"last_used"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// PriceCheckResponse represents the response from a price check
+type PriceCheckResponse struct {
+	URLID            int         `json:"url_id"`
+	PrimaryPrice     *PriceData  `json:"primary_price,omitempty"`
+	AlternativePrice *PriceData  `json:"alternative_price,omitempty"`
+	NeedsFeedback    bool        `json:"needs_feedback"`
+	FeedbackID       string      `json:"feedback_id,omitempty"`
+	HasAlternative   bool        `json:"has_alternative"`
+	CheckedAt        time.Time   `json:"checked_at"`
+	// New fields for dual response system
+	YOLOOCRResult    *PriceData  `json:"yolo_ocr_result,omitempty"`
+	NetworkResult    *PriceData  `json:"network_result,omitempty"`
+	PricesMatch      bool        `json:"prices_match"`
+	MatchConfidence  float64     `json:"match_confidence"`
+	Reasons          []string    `json:"reasons,omitempty"`
+}
+
+// PriceFeedbackRequest represents user feedback on price detection
+type PriceFeedbackRequest struct {
+	FeedbackID        string `json:"feedback_id" validate:"required"`
+	URLID             int    `json:"url_id" validate:"required"`
+	PrimaryCorrect    bool   `json:"primary_correct"`
+	AlternativeCorrect bool  `json:"alternative_correct"`
+	UserComment       string `json:"user_comment,omitempty"`
+}
+
+// PriceFeedbackResponse represents the response to price feedback
+type PriceFeedbackResponse struct {
+	Success           bool    `json:"success"`
+	Message           string  `json:"message"`
+	UpdatedMethod     string  `json:"updated_method,omitempty"`
+	ConfidenceUpdated bool    `json:"confidence_updated"`
 } 

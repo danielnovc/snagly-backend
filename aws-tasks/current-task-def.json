@@ -1,0 +1,253 @@
+{
+    "taskDefinitionArn": "arn:aws:ecs:eu-north-1:797926358985:task-definition/snagly-task:3",
+    "containerDefinitions": [
+        {
+            "name": "yolo-service",
+            "image": "797926358985.dkr.ecr.eu-north-1.amazonaws.com/snagly-yolo:latest",
+            "cpu": 0,
+            "links": [],
+            "portMappings": [
+                {
+                    "containerPort": 8000,
+                    "hostPort": 8000,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "entryPoint": [],
+            "command": [],
+            "environment": [
+                {
+                    "name": "MODEL_PATH",
+                    "value": "/app/models/price_detection_model.pt"
+                },
+                {
+                    "name": "CONFIDENCE_THRESHOLD",
+                    "value": "0.5"
+                },
+                {
+                    "name": "DEVICE",
+                    "value": "cpu"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [],
+            "dnsServers": [],
+            "dnsSearchDomains": [],
+            "extraHosts": [],
+            "dockerSecurityOptions": [],
+            "dockerLabels": {},
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/snagly",
+                    "awslogs-region": "eu-north-1",
+                    "awslogs-stream-prefix": "yolo"
+                },
+                "secretOptions": []
+            },
+            "systemControls": [],
+            "credentialSpecs": []
+        },
+        {
+            "name": "snagly-backend",
+            "image": "797926358985.dkr.ecr.eu-north-1.amazonaws.com/snagly-backend:latest",
+            "cpu": 0,
+            "links": [],
+            "portMappings": [
+                {
+                    "containerPort": 8080,
+                    "hostPort": 8080,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "entryPoint": [],
+            "command": [],
+            "environment": [
+                {
+                    "name": "MAX_CONCURRENT_CHECKS",
+                    "value": "3"
+                },
+                {
+                    "name": "MAX_WORKERS",
+                    "value": "3"
+                },
+                {
+                    "name": "ECS_CLUSTER_NAME",
+                    "value": "snagly-cluster"
+                },
+                {
+                    "name": "AWS_REGION",
+                    "value": "eu-north-1"
+                },
+                {
+                    "name": "REQUEST_TIMEOUT",
+                    "value": "300"
+                },
+                {
+                    "name": "PORT",
+                    "value": "8080"
+                },
+                {
+                    "name": "ECS_SERVICE_NAME",
+                    "value": "snagly-service"
+                },
+                {
+                    "name": "HEALTH_CHECK_INTERVAL",
+                    "value": "30"
+                },
+                {
+                    "name": "HOST",
+                    "value": "0.0.0.0"
+                },
+                {
+                    "name": "YOLO_SERVICE_URL",
+                    "value": "http://localhost:8000"
+                },
+                {
+                    "name": "SUPABASE_URL",
+                    "value": "https://jpxgqdvanltzzhlcyqer.supabase.co"
+                },
+                {
+                    "name": "ALLOWED_ORIGINS",
+                    "value": "*"
+                },
+                {
+                    "name": "LOG_FORMAT",
+                    "value": "json"
+                },
+                {
+                    "name": "PRICE_CHECK_INTERVAL",
+                    "value": "0 */12 * * *"
+                },
+                {
+                    "name": "SUPABASE_ANON_KEY",
+                    "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpweGdxZHZhbmx0enpobGN5cWVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUzNDg4NzMsImV4cCI6MjA3MDkyNDg3M30.FoBVacO5VzNxMDuDx9L-LZBkhQ-Ekr5jfcQqlLsSHz8"
+                },
+                {
+                    "name": "DATABASE_URL",
+                    "value": "postgresql://postgres.jpxgqdvanltzzhlcyqer:KMc4qvVDFaaenGQI@aws-1-eu-west-2.pooler.supabase.com:6543/postgres"
+                },
+                {
+                    "name": "OCR_SERVICE_URL",
+                    "value": "http://localhost:5000"
+                },
+                {
+                    "name": "LOG_LEVEL",
+                    "value": "info"
+                }
+            ],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [],
+            "dnsServers": [],
+            "dnsSearchDomains": [],
+            "extraHosts": [],
+            "dockerSecurityOptions": [],
+            "dockerLabels": {},
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/snagly",
+                    "awslogs-region": "eu-north-1",
+                    "awslogs-stream-prefix": "backend"
+                },
+                "secretOptions": []
+            },
+            "systemControls": [],
+            "credentialSpecs": []
+        },
+        {
+            "name": "tesseract-service",
+            "image": "797926358985.dkr.ecr.eu-north-1.amazonaws.com/snagly-ocr:latest",
+            "cpu": 0,
+            "links": [],
+            "portMappings": [
+                {
+                    "containerPort": 5000,
+                    "hostPort": 5000,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "entryPoint": [],
+            "command": [],
+            "environment": [],
+            "environmentFiles": [],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "secrets": [],
+            "dnsServers": [],
+            "dnsSearchDomains": [],
+            "extraHosts": [],
+            "dockerSecurityOptions": [],
+            "dockerLabels": {},
+            "ulimits": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/snagly",
+                    "awslogs-region": "eu-north-1",
+                    "awslogs-stream-prefix": "ocr"
+                },
+                "secretOptions": []
+            },
+            "systemControls": [],
+            "credentialSpecs": []
+        }
+    ],
+    "family": "snagly-task",
+    "taskRoleArn": "arn:aws:iam::797926358985:role/snagly-task-role",
+    "executionRoleArn": "arn:aws:iam::797926358985:role/snagly-task-execution-role",
+    "networkMode": "awsvpc",
+    "revision": 3,
+    "volumes": [],
+    "status": "ACTIVE",
+    "requiresAttributes": [
+        {
+            "name": "com.amazonaws.ecs.capability.logging-driver.awslogs"
+        },
+        {
+            "name": "ecs.capability.execution-role-awslogs"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.ecr-auth"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.19"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.17"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.task-iam-role"
+        },
+        {
+            "name": "ecs.capability.execution-role-ecr-pull"
+        },
+        {
+            "name": "com.amazonaws.ecs.capability.docker-remote-api.1.18"
+        },
+        {
+            "name": "ecs.capability.task-eni"
+        }
+    ],
+    "placementConstraints": [],
+    "compatibilities": [
+        "EC2",
+        "FARGATE"
+    ],
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "1024",
+    "memory": "2048",
+    "registeredAt": "2025-09-06T12:40:31.806000+03:00",
+    "registeredBy": "arn:aws:iam::797926358985:user/Snagly"
+}

@@ -92,7 +92,7 @@ func main() {
 			return interfaces, nil
 		},
 		ScrapePrice: func(url string, urlID int) (interface{}, error) {
-			return h.GetScraper().ScrapePriceWithHybridMethod(url, urlID)
+			return h.GetScraper().ScrapePriceWithDualResults(url, urlID)
 		},
 		MarkPriceCheckFailed: func(urlID int) error {
 			return h.GetURLRepo().MarkPriceCheckFailed(urlID)
@@ -149,6 +149,7 @@ func main() {
 	apiV1.HandleFunc("/urls/{id}", h.GetURLDetails).Methods("GET")
 	apiV1.HandleFunc("/urls/{id}", h.DeleteTrackedURL).Methods("DELETE")
 	apiV1.HandleFunc("/urls/{id}/check", h.CheckPriceNow).Methods("POST")
+	apiV1.HandleFunc("/urls/{id}/check-dual", h.CheckPriceNowDual).Methods("POST")
 	apiV1.HandleFunc("/urls/{id}/check-async", h.CheckPriceNowAsync).Methods("POST")
 	apiV1.HandleFunc("/urls/{id}/choice", h.HandleUserChoice).Methods("POST")
 	apiV1.HandleFunc("/urls/{id}/history", h.GetPriceHistory).Methods("GET")

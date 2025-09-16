@@ -1,0 +1,74 @@
+{
+    "family": "snagly-task",
+    "containerDefinitions": [
+        {
+            "name": "snagly-backend",
+            "image": "797926358985.dkr.ecr.eu-north-1.amazonaws.com/snagly-backend:latest",
+            "cpu": 0,
+            "portMappings": [
+                {
+                    "containerPort": 8080,
+                    "hostPort": 8080,
+                    "protocol": "tcp"
+                }
+            ],
+            "essential": true,
+            "environment": [
+                {
+                    "name": "DATABASE_URL",
+                    "value": "postgresql://postgres.jpxgqdvanltzzhlcyqer:KMc4qvVDFaaenGQI@aws-1-eu-west-2.pooler.supabase.com:6543/postgres"
+                },
+                {
+                    "name": "SUPABASE_URL",
+                    "value": "https://jpxgqdvanltzzhlcyqer.supabase.co"
+                },
+                {
+                    "name": "SUPABASE_ANON_KEY",
+                    "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpweGdxZHZhbmx0enpobGN5cWVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUzNDg4NzMsImV4cCI6MjA3MDkyNDg3M30.FoBVacO5VzNxMDuDx9L-LZBkhQ-Ekr5jfcQqlLsSHz8"
+                },
+                {
+                    "name": "HOST",
+                    "value": "0.0.0.0"
+                },
+                {
+                    "name": "PORT",
+                    "value": "8080"
+                },
+                {
+                    "name": "ALLOWED_ORIGINS",
+                    "value": "https://api.snagly.app,https://snagly-alb-191279591.eu-north-1.elb.amazonaws.com,http://localhost:3000,http://localhost:8080"
+                },
+                {
+                    "name": "OCR_SERVICE_URL",
+                    "value": "http://localhost:5000"
+                },
+                {
+                    "name": "PRICE_CHECK_INTERVAL",
+                    "value": "*/30 * * * *"
+                },
+                {
+                    "name": "MAX_CONCURRENT_CHECKS",
+                    "value": "5"
+                }
+            ],
+            "mountPoints": [],
+            "volumesFrom": [],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": "/ecs/snagly",
+                    "awslogs-region": "eu-north-1",
+                    "awslogs-stream-prefix": "ecs"
+                }
+            },
+            "systemControls": []
+        }
+    ],
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "256",
+    "memory": "512",
+    "networkMode": "awsvpc",
+    "executionRoleArn": "arn:aws:iam::797926358985:role/snagly-task-execution-role"
+}

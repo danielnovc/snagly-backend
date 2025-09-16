@@ -9,15 +9,15 @@
   },
   {
     "ParameterKey": "DatabaseUrl",
-    "ParameterValue": "postgresql://postgres.jpxgqdvanltzzhlcyqer:KMc4qvVDFaaenGQI@aws-1-eu-west-2.pooler.supabase.com:6543/postgres"
+    "ParameterValue": "REPLACE_WITH_YOUR_DATABASE_URL"
   },
   {
     "ParameterKey": "SupabaseUrl",
-    "ParameterValue": "https://jpxgqdvanltzzhlcyqer.supabase.co"
+    "ParameterValue": "REPLACE_WITH_YOUR_SUPABASE_URL"
   },
   {
     "ParameterKey": "SupabaseAnonKey",
-    "ParameterValue": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpweGdxZHZhbmx0enpobGN5cWVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUzNDg4NzMsImV4cCI6MjA3MDkyNDg3M30.FoBVacO5VzNxMDuDx9L-LZBkhQ-Ekr5jfcQqlLsSHz8"
+    "ParameterValue": "REPLACE_WITH_YOUR_SUPABASE_ANON_KEY"
   },
   {
     "ParameterKey": "AllowedOrigins",

@@ -21,7 +21,8 @@ type PriceCheckTask struct {
 	Status      TaskStatus             `json:"status"`
 	Progress    int                    `json:"progress"` // 0-100
 	Message     string                 `json:"message"`
-	Result      *PriceData             `json:"result,omitempty"`
+	Result      *PriceData             `json:"result,omitempty"` // For backward compatibility
+	PriceResponse *PriceCheckResponse  `json:"price_response,omitempty"` // Full dual response
 	Error       string                 `json:"error,omitempty"`
 	CreatedAt   time.Time              `json:"created_at"`
 	StartedAt   *time.Time             `json:"started_at,omitempty"`
@@ -63,6 +64,24 @@ func (t *PriceCheckTask) Complete(result *PriceData) {
 	t.Progress = 100
 	t.Message = "Price check completed successfully"
 	t.Result = result
+	now := time.Now()
+	t.CompletedAt = &now
+}
+
+// CompleteWithDualResponse marks the task as completed with full dual response
+func (t *PriceCheckTask) CompleteWithDualResponse(priceResponse *PriceCheckResponse) {
+	t.Status = TaskStatusCompleted
+	t.Progress = 100
+	t.Message = "Price check completed successfully"
+	t.PriceResponse = priceResponse
+	
+	// Also set the primary result for backward compatibility
+	if priceResponse.PrimaryPrice != nil {
+		t.Result = priceResponse.PrimaryPrice
+	} else if priceResponse.AlternativePrice != nil {
+		t.Result = priceResponse.AlternativePrice
+	}
+	
 	now := time.Now()
 	t.CompletedAt = &now
 }

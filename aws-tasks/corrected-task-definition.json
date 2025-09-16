@@ -1,0 +1,192 @@
+{
+  "family": "snagly-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "2048",
+  "memory": "4096",
+  "executionRoleArn": "arn:aws:iam::797926358985:role/snagly-task-execution-role",
+  "taskRoleArn": "arn:aws:iam::797926358985:role/snagly-task-role",
+  "containerDefinitions": [
+    {
+      "name": "snagly-backend",
+      "image": "797926358985.dkr.ecr.eu-north-1.amazonaws.com/snagly-backend:latest",
+      "cpu": 512,
+      "memory": 1536,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        {
+          "name": "OCR_SERVICE_URL",
+          "value": "http://tesseract-service:5000"
+        },
+        {
+          "name": "YOLO_SERVICE_URL",
+          "value": "http://yolo-service:8000"
+        },
+        {
+          "name": "HOST",
+          "value": "0.0.0.0"
+        },
+        {
+          "name": "PORT",
+          "value": "8080"
+        },
+        {
+          "name": "ALLOWED_ORIGINS",
+          "value": "https://api.snagly.app,https://snagly-alb-191279591.eu-north-1.elb.amazonaws.com,http://localhost:3000,http://localhost:8080"
+        },
+        {
+          "name": "AWS_REGION",
+          "value": "eu-north-1"
+        },
+        {
+          "name": "ECS_CLUSTER_NAME",
+          "value": "snagly-cluster"
+        },
+        {
+          "name": "ECS_SERVICE_NAME",
+          "value": "snagly-service"
+        },
+        {
+          "name": "LOG_LEVEL",
+          "value": "info"
+        },
+        {
+          "name": "LOG_FORMAT",
+          "value": "json"
+        },
+        {
+          "name": "MAX_WORKERS",
+          "value": "5"
+        },
+        {
+          "name": "REQUEST_TIMEOUT",
+          "value": "300"
+        },
+        {
+          "name": "HEALTH_CHECK_INTERVAL",
+          "value": "30"
+        },
+        {
+          "name": "PRICE_CHECK_INTERVAL",
+          "value": "0 */12 * * *"
+        },
+        {
+          "name": "MAX_CONCURRENT_CHECKS",
+          "value": "5"
+        },
+        {
+          "name": "DATABASE_URL",
+          "value": "postgresql://postgres.jpxgqdvanltzzhlcyqer:KMc4qvVDFaaenGQI@aws-1-eu-west-2.pooler.supabase.com:6543/postgres"
+        },
+        {
+          "name": "SUPABASE_URL",
+          "value": "https://jpxgqdvanltzzhlcyqer.supabase.co"
+        },
+        {
+          "name": "SUPABASE_ANON_KEY",
+          "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpweGdxZHZhbmx0enpobGN5cWVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUzNDg4NzMsImV4cCI6MjA3MDkyNDg3M30.FoBVacO5VzNxMDuDx9L-LZBkhQ-Ekr5jfcQqlLsSHz8"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/snagly",
+          "awslogs-region": "eu-north-1",
+          "awslogs-stream-prefix": "backend"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f -X GET http://localhost:8080/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 120
+      }
+    },
+    {
+      "name": "yolo-service",
+      "image": "797926358985.dkr.ecr.eu-north-1.amazonaws.com/snagly-yolo:latest",
+      "cpu": 1024,
+      "memory": 1536,
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        {
+          "name": "MODEL_PATH",
+          "value": "/app/models/price_detection_model.pt"
+        },
+        {
+          "name": "CONFIDENCE_THRESHOLD",
+          "value": "0.5"
+        },
+        {
+          "name": "DEVICE",
+          "value": "cpu"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/snagly",
+          "awslogs-region": "eu-north-1",
+          "awslogs-stream-prefix": "yolo"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f -X GET http://localhost:8000/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 180
+      }
+    },
+    {
+      "name": "tesseract-service",
+      "image": "797926358985.dkr.ecr.eu-north-1.amazonaws.com/snagly-ocr:latest",
+      "cpu": 512,
+      "memory": 1024,
+      "portMappings": [
+        {
+          "containerPort": 5000,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/snagly",
+          "awslogs-region": "eu-north-1",
+          "awslogs-stream-prefix": "ocr"
+        }
+      },
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -f -X GET http://localhost:5000/health || exit 1"
+        ],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 120
+      }
+    }
+  ]
+}
